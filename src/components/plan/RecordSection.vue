@@ -13,17 +13,20 @@ const props = defineProps({
 
 const store = useTravelStore()
 
+// 固定 + 自定义花费分类
+const categories = computed(() => store.expenseCategories)
+
 const records = computed(() =>
   [...(props.plan.records || [])].sort((a, b) => (a.date < b.date ? -1 : 1))
 )
 
-const totalSpend = computed(() => planTotalSpend(props.plan))
-const breakdown = computed(() => planSpendBreakdown(props.plan))
+const totalSpend = computed(() => planTotalSpend(props.plan, categories.value))
+const breakdown = computed(() => planSpendBreakdown(props.plan, categories.value))
 const budget = computed(() => Number(props.plan.budget) || 0)
 const balance = computed(() => budget.value - totalSpend.value)
 
 function recordTotal(r) {
-  return EXPENSE_CATEGORIES.reduce((s, { key }) => s + (Number(r[key]) || 0), 0)
+  return categories.value.reduce((s, { key }) => s + (Number(r[key]) || 0), 0)
 }
 
 // ===== 新增 / 编辑表单 =====
@@ -35,11 +38,7 @@ function emptyForm() {
   return {
     date: '',
     itinerary: '',
-    transportCost: '',
-    mealCost: '',
-    ticketCost: '',
-    shoppingCost: '',
-    otherCost: '',
+    costs: {},
     notes: '',
     photo: '',
   }
@@ -53,14 +52,14 @@ function openAdd() {
 
 function openEdit(record) {
   editingId.value = record.id
+  const costs = {}
+  categories.value.forEach(({ key }) => {
+    costs[key] = record[key] || ''
+  })
   Object.assign(form, {
     date: record.date,
     itinerary: record.itinerary,
-    transportCost: record.transportCost || '',
-    mealCost: record.mealCost || '',
-    ticketCost: record.ticketCost || '',
-    shoppingCost: record.shoppingCost || '',
-    otherCost: record.otherCost || '',
+    costs,
     notes: record.notes,
     photo: record.photo || '',
   })
@@ -72,20 +71,44 @@ function save() {
   const record = {
     date: form.date,
     itinerary: form.itinerary,
-    transportCost: Number(form.transportCost) || 0,
-    mealCost: Number(form.mealCost) || 0,
-    ticketCost: Number(form.ticketCost) || 0,
-    shoppingCost: Number(form.shoppingCost) || 0,
-    otherCost: Number(form.otherCost) || 0,
     notes: form.notes,
     photo: form.photo,
   }
+  categories.value.forEach(({ key }) => {
+    record[key] = Number(form.costs[key]) || 0
+  })
   if (editingId.value) {
     store.updateRecord(props.plan.id, editingId.value, record)
   } else {
     store.addRecord(props.plan.id, record)
   }
   showForm.value = false
+}
+
+// ===== 自定义分类管理 =====
+const showCategoryManager = ref(false)
+const newCategoryName = ref('')
+const categoryError = ref('')
+
+function addCategory() {
+  const result = store.addExpenseCategory(newCategoryName.value)
+  if (!result.ok) {
+    categoryError.value = result.error
+    return
+  }
+  newCategoryName.value = ''
+  categoryError.value = ''
+}
+
+function removeCategory(cat) {
+  const amount = store.customCategorySpend(cat.key)
+  const tip =
+    amount > 0
+      ? `分类「${cat.label}」下已有花费 ${formatMoney(amount)}，删除后这些金额将并入「其他」分类，不会丢失。确认删除吗？`
+      : `确认删除分类「${cat.label}」吗？`
+  if (confirm(tip)) {
+    store.removeExpenseCategory(cat.key)
+  }
 }
 </script>
 
@@ -110,10 +133,13 @@ function save() {
     <!-- 分类花费 -->
     <div class="breakdown">
       <span
-        v-for="{ key, label } in EXPENSE_CATEGORIES"
+        v-for="{ key, label } in categories"
         :key="key"
         class="tag tag-gray"
       >{{ label }} {{ formatMoney(breakdown[label]) }}</span>
+      <button type="button" class="btn btn-ghost btn-sm" @click="showCategoryManager = true">
+        管理分类
+      </button>
     </div>
 
     <div class="flex-between mb-16">
@@ -129,7 +155,7 @@ function save() {
           <div class="record-title">{{ r.itinerary || '（无行程内容）' }}</div>
           <div class="record-costs">
             <span
-              v-for="{ key, label } in EXPENSE_CATEGORIES"
+              v-for="{ key, label } in categories"
               v-show="Number(r[key])"
               :key="key"
             >{{ label }} {{ formatMoney(r[key]) }}</span>
@@ -161,25 +187,9 @@ function save() {
         <input v-model="form.itinerary" class="input" placeholder="例如：游览西湖、逛老街" />
       </div>
       <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">交通花费</label>
-          <input v-model="form.transportCost" type="number" min="0" class="input" placeholder="0" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">餐饮花费</label>
-          <input v-model="form.mealCost" type="number" min="0" class="input" placeholder="0" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">门票花费</label>
-          <input v-model="form.ticketCost" type="number" min="0" class="input" placeholder="0" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">购物花费</label>
-          <input v-model="form.shoppingCost" type="number" min="0" class="input" placeholder="0" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">其他花费</label>
-          <input v-model="form.otherCost" type="number" min="0" class="input" placeholder="0" />
+        <div v-for="{ key, label } in categories" :key="key" class="form-group">
+          <label class="form-label">{{ label }}花费</label>
+          <input v-model="form.costs[key]" type="number" min="0" class="input" placeholder="0" />
         </div>
       </div>
       <div class="form-group">
@@ -192,6 +202,48 @@ function save() {
       <template #footer>
         <button type="button" class="btn btn-ghost" @click="showForm = false">取消</button>
         <button type="button" class="btn btn-primary" @click="save">保存</button>
+      </template>
+    </Modal>
+
+    <!-- 分类管理弹窗 -->
+    <Modal :show="showCategoryManager" title="管理花费分类" @close="showCategoryManager = false">
+      <div class="form-group">
+        <label class="form-label">内置分类</label>
+        <div class="cat-list">
+          <span v-for="c in EXPENSE_CATEGORIES" :key="c.key" class="tag tag-gray">{{ c.label }}</span>
+        </div>
+        <p class="cat-hint">内置分类不可删除</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">自定义分类</label>
+        <div v-if="store.customCategories.length" class="custom-cat-list">
+          <div v-for="c in store.customCategories" :key="c.key" class="custom-cat">
+            <span>{{ c.label }}</span>
+            <span class="custom-cat-spend">{{ formatMoney(store.customCategorySpend(c.key)) }}</span>
+            <button type="button" class="btn btn-danger btn-sm" @click="removeCategory(c)">删除</button>
+          </div>
+        </div>
+        <p v-else class="cat-hint">还没有自定义分类</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">新增分类</label>
+        <div class="cat-add">
+          <input
+            v-model="newCategoryName"
+            class="input"
+            placeholder="例如：住宿、娱乐"
+            maxlength="10"
+            @keyup.enter="addCategory"
+          />
+          <button type="button" class="btn btn-primary" @click="addCategory">添加</button>
+        </div>
+        <p v-if="categoryError" class="cat-error">{{ categoryError }}</p>
+      </div>
+
+      <template #footer>
+        <button type="button" class="btn btn-primary" @click="showCategoryManager = false">完成</button>
       </template>
     </Modal>
   </div>
@@ -298,5 +350,57 @@ function save() {
 .record-total {
   font-weight: 600;
   margin-right: 6px;
+}
+
+.cat-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cat-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.custom-cat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.custom-cat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+
+.custom-cat span:first-child {
+  flex: 1;
+  font-weight: 500;
+}
+
+.custom-cat-spend {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cat-add {
+  display: flex;
+  gap: 8px;
+}
+
+.cat-add .input {
+  flex: 1;
+}
+
+.cat-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 6px;
 }
 </style>

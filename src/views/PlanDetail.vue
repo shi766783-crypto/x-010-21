@@ -14,6 +14,7 @@ const route = useRoute()
 const router = useRouter()
 
 const plan = computed(() => store.planById(route.params.id))
+const categories = computed(() => store.expenseCategories)
 const activeTab = ref('overview')
 
 const tabs = [
@@ -72,7 +73,7 @@ function onDelete() {
       <div class="overview-grid">
         <div class="ov-item"><span>住宿信息</span><strong>{{ plan.accommodation || '未填写' }}</strong></div>
         <div class="ov-item"><span>预算总额</span><strong>{{ formatMoney(plan.budget) }}</strong></div>
-        <div class="ov-item"><span>当前花费</span><strong>{{ formatMoney(planTotalSpend(plan)) }}</strong></div>
+        <div class="ov-item"><span>当前花费</span><strong>{{ formatMoney(planTotalSpend(plan, categories)) }}</strong></div>
         <div class="ov-item">
           <span>行李打包</span><strong>{{ planPackingRate(plan) }}%</strong>
         </div>
@@ -81,8 +82,8 @@ function onDelete() {
         </div>
         <div class="ov-item">
           <span>预算结余</span>
-          <strong :class="plan.budget - planTotalSpend(plan) >= 0 ? 'text-success' : 'text-danger'">
-            {{ formatMoney(plan.budget - planTotalSpend(plan)) }}
+          <strong :class="plan.budget - planTotalSpend(plan, categories) >= 0 ? 'text-success' : 'text-danger'">
+            {{ formatMoney(plan.budget - planTotalSpend(plan, categories)) }}
           </strong>
         </div>
       </div>

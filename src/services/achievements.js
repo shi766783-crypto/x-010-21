@@ -1,7 +1,8 @@
+import { EXPENSE_CATEGORIES } from '../constants'
 import { planPackingRate, planTodosAllDone, planTotalSpend } from './selectors'
 
 // 成就徽章定义（12 种）
-// check 函数接收 { plans } 上下文，返回是否达成
+// check 函数接收 { plans, categories } 上下文，返回是否达成
 export const ACHIEVEMENTS = [
   {
     id: 'first-trip',
@@ -57,10 +58,10 @@ export const ACHIEVEMENTS = [
     description: '某次出行花费未超过预算',
     glyph: '控',
     color: '#f97316',
-    check: ({ plans }) =>
+    check: ({ plans, categories }) =>
       plans.some((p) => {
         const budget = Number(p.budget) || 0
-        return budget > 0 && p.records?.length > 0 && planTotalSpend(p) <= budget
+        return budget > 0 && p.records?.length > 0 && planTotalSpend(p, categories) <= budget
       }),
   },
   {
@@ -69,10 +70,10 @@ export const ACHIEVEMENTS = [
     description: '某次出行花费控制在预算 80% 以内',
     glyph: '省',
     color: '#ef4444',
-    check: ({ plans }) =>
+    check: ({ plans, categories }) =>
       plans.some((p) => {
         const budget = Number(p.budget) || 0
-        return budget > 0 && p.records?.length > 0 && planTotalSpend(p) <= budget * 0.8
+        return budget > 0 && p.records?.length > 0 && planTotalSpend(p, categories) <= budget * 0.8
       }),
   },
   {
@@ -118,8 +119,8 @@ export const ACHIEVEMENTS = [
 ]
 
 // 计算当前已解锁的成就列表
-export function computeAchievements(plans) {
-  const ctx = { plans }
+export function computeAchievements(plans, categories = EXPENSE_CATEGORIES) {
+  const ctx = { plans, categories }
   return ACHIEVEMENTS.map((a) => ({ ...a, unlocked: a.check(ctx) }))
 }
 

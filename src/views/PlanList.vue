@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTravelStore } from '../stores/travel'
 import { formatDate, formatMoney } from '../utils/format'
@@ -6,6 +7,8 @@ import { planTotalSpend, planPackingRate } from '../services/selectors'
 
 const store = useTravelStore()
 const router = useRouter()
+
+const categories = computed(() => store.expenseCategories)
 
 function tripTypeClass(type) {
   return { 出国: 'tag-red', 长途: 'tag-orange', 出差: 'tag-blue' }[type] || 'tag-green'
@@ -46,8 +49,8 @@ function onDelete(plan) {
           <div class="plan-stats">
             <div class="plan-stat">
               <span class="text-muted">花费</span>
-              <strong :class="planTotalSpend(plan) > plan.budget ? 'text-danger' : ''">
-                {{ formatMoney(planTotalSpend(plan)) }}
+              <strong :class="planTotalSpend(plan, categories) > plan.budget ? 'text-danger' : ''">
+                {{ formatMoney(planTotalSpend(plan, categories)) }}
                 <small v-if="plan.budget"> / {{ formatMoney(plan.budget) }}</small>
               </strong>
             </div>

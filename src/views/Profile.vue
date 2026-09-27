@@ -10,6 +10,7 @@ const store = useTravelStore()
 const router = useRouter()
 
 const stats = computed(() => store.dashboardStats)
+const categories = computed(() => store.expenseCategories)
 const unlocked = computed(() => store.achievements.filter((a) => a.unlocked))
 const summarized = computed(() => store.plans.filter((p) => p.summary))
 </script>
@@ -44,7 +45,7 @@ const summarized = computed(() => store.plans.filter((p) => p.summary))
             <td>{{ p.name }}</td>
             <td>{{ p.destination }}</td>
             <td>{{ formatDate(p.startDate) }} - {{ formatDate(p.endDate) }}</td>
-            <td>{{ formatMoney(planTotalSpend(p)) }}</td>
+            <td>{{ formatMoney(planTotalSpend(p, categories)) }}</td>
             <td>{{ planPackingRate(p) }}%</td>
           </tr>
         </tbody>

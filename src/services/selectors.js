@@ -5,24 +5,18 @@ function toNum(value) {
   return Number(value) || 0
 }
 
-// 单次出行总花费
-export function planTotalSpend(plan) {
+// 单次出行总花费（categories 含自定义分类，默认仅内置分类）
+export function planTotalSpend(plan, categories = EXPENSE_CATEGORIES) {
   return (plan.records || []).reduce(
-    (sum, r) =>
-      sum +
-      toNum(r.transportCost) +
-      toNum(r.mealCost) +
-      toNum(r.ticketCost) +
-      toNum(r.shoppingCost) +
-      toNum(r.otherCost),
+    (sum, r) => sum + categories.reduce((s, { key }) => s + toNum(r[key]), 0),
     0
   )
 }
 
 // 单次出行花费分类汇总
-export function planSpendBreakdown(plan) {
+export function planSpendBreakdown(plan, categories = EXPENSE_CATEGORIES) {
   const records = plan.records || []
-  return EXPENSE_CATEGORIES.reduce((acc, { key, label }) => {
+  return categories.reduce((acc, { key, label }) => {
     acc[label] = records.reduce((sum, r) => sum + toNum(r[key]), 0)
     return acc
   }, {})

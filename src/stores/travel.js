@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { planStorage } from '../services/storage'
+import { EXPENSE_CATEGORIES } from '../constants'
+import { planStorage, categoryStorage } from '../services/storage'
 import { generateLuggageTemplate, getDestinationType } from '../services/luggage'
 import { generateDefaultTodos } from '../services/todo'
 import { computeAchievements, TOTAL_ACHIEVEMENTS } from '../services/achievements'
@@ -17,12 +18,20 @@ function buildMemberNames(input) {
 export const useTravelStore = defineStore('travel', {
   state: () => ({
     plans: [],
+    // 用户自定义花费分类 [{ key, label }]，key 形如 custom_xxx
+    customCategories: [],
   }),
 
   getters: {
-    achievements: (state) => computeAchievements(state.plans),
+    // 固定分类 + 自定义分类（自定义追加在后），供汇总与图表统一使用
+    expenseCategories: (state) => [...EXPENSE_CATEGORIES, ...state.customCategories],
+    achievements(state) {
+      return computeAchievements(state.plans, this.expenseCategories)
+    },
     totalAchievements: () => TOTAL_ACHIEVEMENTS,
-    dashboardStats: (state) => computeDashboardStats(state.plans),
+    dashboardStats(state) {
+      return computeDashboardStats(state.plans, this.expenseCategories)
+    },
     leaderboard: (state) => computeMemberLeaderboard(state.plans),
     planById: (state) => (id) => state.plans.find((p) => p.id === id),
   },
@@ -31,9 +40,44 @@ export const useTravelStore = defineStore('travel', {
     // ===== 持久化 =====
     load() {
       this.plans = planStorage.read([])
+      this.customCategories = categoryStorage.read([])
     },
     persist() {
       planStorage.write(this.plans)
+      categoryStorage.write(this.customCategories)
+    },
+
+    // ===== 花费分类 =====
+    // 新增自定义分类：名称非空且不与现有分类（含内置）重名
+    addExpenseCategory(label) {
+      const name = String(label || '').trim()
+      if (!name) return { ok: false, error: '请输入分类名称' }
+      if (this.expenseCategories.some((c) => c.label === name)) {
+        return { ok: false, error: `分类「${name}」已存在` }
+      }
+      this.customCategories.push({ key: `custom_${uid()}`, label: name })
+      return { ok: true }
+    },
+
+    // 某自定义分类在所有出行记录中的累计金额（用于删除前提示）
+    customCategorySpend(key) {
+      return this.plans.reduce(
+        (sum, p) =>
+          sum + (p.records || []).reduce((s, r) => s + (Number(r[key]) || 0), 0),
+        0
+      )
+    },
+
+    // 删除自定义分类：该分类下已有金额并入「其他」，避免金额凭空消失
+    removeExpenseCategory(key) {
+      this.plans.forEach((p) => {
+        ;(p.records || []).forEach((r) => {
+          const amount = Number(r[key]) || 0
+          if (amount) r.otherCost = (Number(r.otherCost) || 0) + amount
+          delete r[key]
+        })
+      })
+      this.customCategories = this.customCategories.filter((c) => c.key !== key)
     },
 
     // ===== 出行计划 =====

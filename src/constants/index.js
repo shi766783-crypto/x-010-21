@@ -10,7 +10,8 @@ export const LUGGAGE_CATEGORIES = ['证件类', '衣物类', '洗漱类', '电�
 // 默认待办清单
 export const TODO_DEFAULTS = ['订票', '订酒店', '换外币', '检查证件有效期', '购买旅行保险']
 
-// 花费分类（用于汇总与图表）
+// 内置花费分类（用于汇总与图表）
+// 用户自定义分类由 store 的 customCategories 管理，完整列表见 store.expenseCategories
 export const EXPENSE_CATEGORIES = [
   { key: 'transportCost', label: '交通' },
   { key: 'mealCost', label: '餐饮' },
