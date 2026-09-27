@@ -1,29 +1,21 @@
-import { EXPENSE_CATEGORIES } from '../constants'
+import {
+  allExpenseCategories,
+  recordCostByCategory,
+  recordTotalCost,
+} from './expenseCategories'
 import { luggageCompletionRate } from './luggage'
 
-function toNum(value) {
-  return Number(value) || 0
-}
-
 // 单次出行总花费
+// 自定义分类的金额始终计入（即使分类配置丢失，总额也不会凭空变化）
 export function planTotalSpend(plan) {
-  return (plan.records || []).reduce(
-    (sum, r) =>
-      sum +
-      toNum(r.transportCost) +
-      toNum(r.mealCost) +
-      toNum(r.ticketCost) +
-      toNum(r.shoppingCost) +
-      toNum(r.otherCost),
-    0
-  )
+  return (plan.records || []).reduce((sum, r) => sum + recordTotalCost(r), 0)
 }
 
-// 单次出行花费分类汇总
-export function planSpendBreakdown(plan) {
+// 单次出行花费分类汇总（内置分类 + 当前自定义分类）
+export function planSpendBreakdown(plan, customCategories = []) {
   const records = plan.records || []
-  return EXPENSE_CATEGORIES.reduce((acc, { key, label }) => {
-    acc[label] = records.reduce((sum, r) => sum + toNum(r[key]), 0)
+  return allExpenseCategories(customCategories).reduce((acc, { key, label }) => {
+    acc[label] = records.reduce((sum, r) => sum + recordCostByCategory(r, key), 0)
     return acc
   }, {})
 }

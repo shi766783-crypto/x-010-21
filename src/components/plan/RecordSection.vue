@@ -1,11 +1,15 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useTravelStore } from '../../stores/travel'
-import { EXPENSE_CATEGORIES } from '../../constants'
 import { planTotalSpend, planSpendBreakdown } from '../../services/selectors'
+import {
+  recordCostByCategory,
+  recordTotalCost,
+} from '../../services/expenseCategories'
 import { formatMoney, formatDate } from '../../utils/format'
 import Modal from '../common/Modal.vue'
 import ImageUpload from '../common/ImageUpload.vue'
+import ExpenseCategoryManager from './ExpenseCategoryManager.vue'
 
 const props = defineProps({
   plan: { type: Object, required: true },
@@ -18,13 +22,11 @@ const records = computed(() =>
 )
 
 const totalSpend = computed(() => planTotalSpend(props.plan))
-const breakdown = computed(() => planSpendBreakdown(props.plan))
+const breakdown = computed(() =>
+  planSpendBreakdown(props.plan, store.customCategories)
+)
 const budget = computed(() => Number(props.plan.budget) || 0)
 const balance = computed(() => budget.value - totalSpend.value)
-
-function recordTotal(r) {
-  return EXPENSE_CATEGORIES.reduce((s, { key }) => s + (Number(r[key]) || 0), 0)
-}
 
 // ===== 新增 / 编辑表单 =====
 const showForm = ref(false)
@@ -40,6 +42,8 @@ function emptyForm() {
     ticketCost: '',
     shoppingCost: '',
     otherCost: '',
+    // 自定义分类金额：{ [categoryId]: number }
+    customCosts: {},
     notes: '',
     photo: '',
   }
@@ -61,6 +65,7 @@ function openEdit(record) {
     ticketCost: record.ticketCost || '',
     shoppingCost: record.shoppingCost || '',
     otherCost: record.otherCost || '',
+    customCosts: { ...(record.customCosts || {}) },
     notes: record.notes,
     photo: record.photo || '',
   })
@@ -69,6 +74,12 @@ function openEdit(record) {
 
 function save() {
   if (!form.date) return
+  // 仅保留当前仍存在的自定义分类金额（已删除分类的金额在删除时已并入「其他」）
+  const customCosts = {}
+  store.customCategories.forEach((c) => {
+    const amount = Number(form.customCosts[c.id]) || 0
+    if (amount) customCosts[c.id] = amount
+  })
   const record = {
     date: form.date,
     itinerary: form.itinerary,
@@ -77,6 +88,7 @@ function save() {
     ticketCost: Number(form.ticketCost) || 0,
     shoppingCost: Number(form.shoppingCost) || 0,
     otherCost: Number(form.otherCost) || 0,
+    customCosts,
     notes: form.notes,
     photo: form.photo,
   }
@@ -108,9 +120,13 @@ function save() {
     </div>
 
     <!-- 分类花费 -->
+    <div class="breakdown-head">
+      <span class="breakdown-title">分类花费</span>
+      <ExpenseCategoryManager />
+    </div>
     <div class="breakdown">
       <span
-        v-for="{ key, label } in EXPENSE_CATEGORIES"
+        v-for="{ key, label } in store.expenseCategories"
         :key="key"
         class="tag tag-gray"
       >{{ label }} {{ formatMoney(breakdown[label]) }}</span>
@@ -129,16 +145,16 @@ function save() {
           <div class="record-title">{{ r.itinerary || '（无行程内容）' }}</div>
           <div class="record-costs">
             <span
-              v-for="{ key, label } in EXPENSE_CATEGORIES"
-              v-show="Number(r[key])"
+              v-for="{ key, label } in store.expenseCategories"
+              v-show="recordCostByCategory(r, key)"
               :key="key"
-            >{{ label }} {{ formatMoney(r[key]) }}</span>
+            >{{ label }} {{ formatMoney(recordCostByCategory(r, key)) }}</span>
           </div>
           <div v-if="r.notes" class="record-notes">{{ r.notes }}</div>
         </div>
         <img v-if="r.photo" :src="r.photo" class="record-photo" alt="行程照片" />
         <div class="record-actions">
-          <span class="record-total">{{ formatMoney(recordTotal(r)) }}</span>
+          <span class="record-total">{{ formatMoney(recordTotalCost(r)) }}</span>
           <button type="button" class="btn btn-ghost btn-sm" @click="openEdit(r)">编辑</button>
           <button
             type="button"
@@ -180,6 +196,16 @@ function save() {
         <div class="form-group">
           <label class="form-label">其他花费</label>
           <input v-model="form.otherCost" type="number" min="0" class="input" placeholder="0" />
+        </div>
+        <div v-for="cat in store.customCategories" :key="cat.id" class="form-group">
+          <label class="form-label">{{ cat.label }}花费</label>
+          <input
+            v-model="form.customCosts[cat.id]"
+            type="number"
+            min="0"
+            class="input"
+            placeholder="0"
+          />
         </div>
       </div>
       <div class="form-group">
@@ -229,6 +255,19 @@ function save() {
 .sum-card strong {
   font-size: 18px;
   margin-top: 2px;
+}
+
+.breakdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.breakdown-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .breakdown {

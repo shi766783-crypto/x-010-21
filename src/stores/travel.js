@@ -1,9 +1,15 @@
 import { defineStore } from 'pinia'
-import { planStorage } from '../services/storage'
+import { planStorage, categoryStorage } from '../services/storage'
 import { generateLuggageTemplate, getDestinationType } from '../services/luggage'
 import { generateDefaultTodos } from '../services/todo'
 import { computeAchievements, TOTAL_ACHIEVEMENTS } from '../services/achievements'
 import { computeDashboardStats, computeMemberLeaderboard } from '../services/stats'
+import {
+  allExpenseCategories,
+  validateCategoryName,
+  customCategoryTotal,
+} from '../services/expenseCategories'
+import { OTHER_CATEGORY_KEY } from '../constants'
 import { daysBetween } from '../utils/format'
 import { uid } from '../utils/id'
 
@@ -17,12 +23,17 @@ function buildMemberNames(input) {
 export const useTravelStore = defineStore('travel', {
   state: () => ({
     plans: [],
+    // 自定义花费分类：[{ id, label }]，金额存放在记录的 customCosts[id]
+    customCategories: [],
   }),
 
   getters: {
     achievements: (state) => computeAchievements(state.plans),
     totalAchievements: () => TOTAL_ACHIEVEMENTS,
-    dashboardStats: (state) => computeDashboardStats(state.plans),
+    // 内置 + 自定义的完整花费分类列表
+    expenseCategories: (state) => allExpenseCategories(state.customCategories),
+    dashboardStats: (state) =>
+      computeDashboardStats(state.plans, state.customCategories),
     leaderboard: (state) => computeMemberLeaderboard(state.plans),
     planById: (state) => (id) => state.plans.find((p) => p.id === id),
   },
@@ -31,9 +42,11 @@ export const useTravelStore = defineStore('travel', {
     // ===== 持久化 =====
     load() {
       this.plans = planStorage.read([])
+      this.customCategories = categoryStorage.read([])
     },
     persist() {
       planStorage.write(this.plans)
+      categoryStorage.write(this.customCategories)
     },
 
     // ===== 出行计划 =====
@@ -145,6 +158,39 @@ export const useTravelStore = defineStore('travel', {
     removeTodo(planId, todoId) {
       const plan = this.planById(planId)
       if (plan) plan.todos = plan.todos.filter((t) => t.id !== todoId)
+    },
+
+    // ===== 自定义花费分类 =====
+    // 新增分类，返回 { ok, message }；名称需非空、不与任何现有分类重名
+    addCustomCategory(input) {
+      const label = String(input || '').trim()
+      const message = validateCategoryName(label, this.customCategories)
+      if (message) return { ok: false, message }
+      const category = { id: uid(), label }
+      this.customCategories.push(category)
+      return { ok: true, category }
+    },
+
+    // 某自定义分类当前在所有出行中的金额合计（删除前提示用）
+    customCategorySpend(id) {
+      return customCategoryTotal(this.plans, id)
+    },
+
+    // 删除自定义分类：其下金额并入「其他」分类，保证金额不会凭空消失
+    removeCustomCategory(id) {
+      this.plans.forEach((plan) => {
+        ;(plan.records || []).forEach((record) => {
+          const cost = Number(record.customCosts?.[id]) || 0
+          if (cost) {
+            record[OTHER_CATEGORY_KEY] =
+              (Number(record[OTHER_CATEGORY_KEY]) || 0) + cost
+          }
+          if (record.customCosts && id in record.customCosts) {
+            delete record.customCosts[id]
+          }
+        })
+      })
+      this.customCategories = this.customCategories.filter((c) => c.id !== id)
     },
 
     // ===== 行程与花费 =====

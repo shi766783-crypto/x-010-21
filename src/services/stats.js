@@ -1,9 +1,10 @@
-import { TRIP_TYPES, EXPENSE_CATEGORIES } from '../constants'
+import { TRIP_TYPES } from '../constants'
+import { allExpenseCategories } from './expenseCategories'
 import { luggageCompletionRate } from './luggage'
 import { planTotalSpend, planPackingRate, planSpendBreakdown } from './selectors'
 
 // ===== 出行看板统计 =====
-export function computeDashboardStats(plans) {
+export function computeDashboardStats(plans, customCategories = []) {
   const totalTrips = plans.length
   const totalSpend = plans.reduce((sum, p) => sum + planTotalSpend(p), 0)
   const totalBudget = plans.reduce((sum, p) => sum + (Number(p.budget) || 0), 0)
@@ -28,10 +29,13 @@ export function computeDashboardStats(plans) {
     value: plans.filter((p) => p.tripType === label).length,
   }))
 
-  // 花费分类汇总（所有出行）
-  const categorySpend = EXPENSE_CATEGORIES.map(({ label }) => ({ label, value: 0 }))
+  // 花费分类汇总（所有出行，含自定义分类）
+  const categorySpend = allExpenseCategories(customCategories).map(({ label }) => ({
+    label,
+    value: 0,
+  }))
   plans.forEach((p) => {
-    const breakdown = planSpendBreakdown(p)
+    const breakdown = planSpendBreakdown(p, customCategories)
     categorySpend.forEach((c) => {
       c.value += breakdown[c.label] || 0
     })
